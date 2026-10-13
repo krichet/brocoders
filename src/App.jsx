@@ -16,6 +16,7 @@ const navItems = [
   { id: 'admin', label: 'Access & roles', icon: Settings2 },
 ];
 const statusLabel = { needs_review: 'Needs review', approved: 'Approved', rejected: 'Rejected' };
+const liveChatEnabled = import.meta.env.DEV;
 
 function useStoredState(key, fallback) {
   const [value, setValue] = useState(() => readStored(key, fallback));
@@ -63,7 +64,7 @@ export default function App() {
   const [roles, setRoles] = useStoredState('signaldesk.roles.v1', initialRoles);
   const [tickets, setTickets] = useStoredState('signaldesk.tickets.v1', initialTickets);
   const [activeRoleId, setActiveRoleId] = useStoredState('signaldesk.activeRole.v1', 'owner');
-  const [selectedChatId, setSelectedChatId] = useState('live');
+  const [selectedChatId, setSelectedChatId] = useState(liveChatEnabled ? 'live' : 'supplier');
   const [selectedTicketId, setSelectedTicketId] = useState('TKT-1042');
   const [adminRoleId, setAdminRoleId] = useState('treasurer');
   const [search, setSearch] = useState('');
@@ -71,6 +72,7 @@ export default function App() {
   const [live, setLive] = useState({ status: 'connecting', messages: [], syncedAt: null, error: null });
 
   useEffect(() => {
+    if (!liveChatEnabled) return undefined;
     let active = true;
     const sync = async () => {
       try {
@@ -94,7 +96,7 @@ export default function App() {
   }, [toast]);
 
   const liveChat = { ...liveChatTemplate, messages: live.messages, unread: live.messages.length ? 1 : 0 };
-  const allChats = [liveChat, ...mockChats];
+  const allChats = liveChatEnabled ? [liveChat, ...mockChats] : mockChats;
   const activeRole = roles.find((role) => role.id === activeRoleId) || roles[0];
   const visibleChats = allChats.filter((chat) => canViewChat(activeRole, chat));
   const visibleChatIds = new Set(visibleChats.map((chat) => chat.id));
@@ -166,14 +168,14 @@ export default function App() {
           <Icon size={18} strokeWidth={1.9} /><span>{label}</span>{id === 'review' && pendingCount > 0 && <em>{pendingCount}</em>}
         </button>)}
       </nav>
-      <div className="sidebar-bottom"><div className="sidebar-divider" /><div className="connection-mini"><span className={`connection-pulse ${live.status}`} /><div><strong>Google Chat connector</strong><span>{live.status === 'connected' ? 'Live sync active' : live.status === 'connecting' ? 'Connecting…' : 'Backend unavailable'}</span></div></div></div>
+      {liveChatEnabled && <div className="sidebar-bottom"><div className="sidebar-divider" /><div className="connection-mini"><span className={`connection-pulse ${live.status}`} /><div><strong>Google Chat connector</strong><span>{live.status === 'connected' ? 'Live sync active' : live.status === 'connecting' ? 'Connecting…' : 'Backend unavailable'}</span></div></div></div>}
     </aside>
 
     <div className="main-area">
-      <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> {navItems.find((item) => item.id === page)?.label}</div><div className="topbar-actions"><span className={`live-chip ${live.status}`}><Radio size={14} />{live.status === 'connected' ? 'Live source connected' : 'Live source offline'}</span><div className="role-switch"><span>Viewing as</span><select value={activeRole.id} onChange={(event) => setActiveRoleId(event.target.value)}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><ChevronDown size={13} /></div><div className="profile-avatar">{activeRole.name.slice(0, 1)}</div></div></header>
+      <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> {navItems.find((item) => item.id === page)?.label}</div><div className="topbar-actions">{liveChatEnabled && <span className={`live-chip ${live.status}`}><Radio size={14} />{live.status === 'connected' ? 'Live source connected' : 'Live source offline'}</span>}<div className="role-switch"><span>Viewing as</span><select value={activeRole.id} onChange={(event) => setActiveRoleId(event.target.value)}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><ChevronDown size={13} /></div><div className="profile-avatar">{activeRole.name.slice(0, 1)}</div></div></header>
 
       {page === 'inbox' && <main className="page-content">
-        <div className="page-intro"><div><h1>Conversation inbox</h1><p>One connected Google Chat and nine sample conversations.</p></div></div>
+        <div className="page-intro"><div><h1>Conversation inbox</h1><p>{liveChatEnabled ? 'One connected Google Chat and nine sample conversations.' : 'Nine sample conversations.'}</p></div></div>
         <div className="metric-grid"><div className="metric-card"><div className="metric-icon indigo"><MessageSquareText size={19} /></div><div><span>Visible conversations</span><strong>{visibleChats.length.toString().padStart(2, '0')}</strong></div><small>Based on current role</small></div><div className="metric-card"><div className="metric-icon amber"><Clock3 size={19} /></div><div><span>Awaiting review</span><strong>{pendingCount.toString().padStart(2, '0')}</strong></div><small>Drafts need a person</small></div><div className="metric-card"><div className="metric-icon mint"><CheckCheck size={19} /></div><div><span>Approved decisions</span><strong>{approvedCount.toString().padStart(2, '0')}</strong></div><small>Human-confirmed only</small></div></div>
         <div className="inbox-grid"><section className="panel conversations-panel"><div className="panel-heading"><div><h2>Tracked conversations</h2><p>Selected sources across the group</p></div><span className="count-pill">{filteredChats.length}</span></div><div className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" /></div><div className="conversation-list">{filteredChats.map((chat) => <button key={chat.id} className={`conversation-row ${selectedChat?.id === chat.id ? 'selected' : ''}`} onClick={() => setSelectedChatId(chat.id)}><div className="conversation-row-top"><span className={`channel-icon ${chat.live ? 'live' : ''}`}>{chat.live ? <Radio size={17} /> : <MessageSquareText size={17} />}</span><div><strong>{chat.title}</strong><span>{companyById[chat.company]?.name}</span></div>{chat.unread > 0 && <i className="unread-dot" />}</div><p>{chat.messages.at(-1)?.text || (chat.live ? 'Waiting for messages from Google Chat' : '')}</p><div className="conversation-row-bottom"><AccessTag level={chat.level} />{chat.live && <span className="live-word">● LIVE</span>}<span>{chat.messages.at(-1)?.time || '—'}</span></div></button>)}{!filteredChats.length && <div className="empty-list">No conversations match this view.</div>}</div></section>
           <section className="panel conversation-detail">{selectedChat ? <><div className="detail-heading"><div><div className="detail-kicker"><CompanyTag companyId={selectedChat.company} /> <span>·</span> {selectedChat.channel}</div><h2>{selectedChat.title}</h2><div className="detail-meta"><AccessTag level={selectedChat.level} /><span>{selectedChat.messages.length} messages</span>{selectedChat.live && <span className={`sync-text ${live.status}`}><span className="tiny-dot" />{live.status === 'connected' ? 'Synced every 5 seconds' : live.error || 'Connecting'}</span>}</div></div></div><div className="messages-heading"><span>CONVERSATION</span><span>{selectedChat.live ? 'Real messages from Google Chat' : 'Prepared demo conversation'}</span></div><div className="messages-scroll">{selectedChat.messages.length ? selectedChat.messages.map((message) => <MessageCard key={message.id} message={message} evidence={currentChatTicket?.evidence.includes(message.id)} />) : <div className="empty-conversation"><Radio size={29} /><strong>No live messages yet</strong><span>Send a message in the connected Google Chat conversation.</span></div>}</div><div className="detail-bottom"><button className="primary-button" onClick={() => analyzeChat(selectedChat)}>{currentChatTicket ? 'Open review draft' : 'Analyze conversation'} <ArrowRight size={17} /></button></div></> : <div className="empty-list">No conversations are available to this role.</div>}</section>
